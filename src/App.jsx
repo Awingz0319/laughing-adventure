@@ -1,20 +1,25 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 import Auth from "./components/Auth";
-import { LogOut, Plus, CheckCircle2, Flame } from "lucide-react";
+import HabitModal from "./components/HabitModal";
+import HabitItem from "./components/HabitItem";
+import { LogOut, Plus, Loader2 } from "lucide-react";
 
 export default function App() {
     const [session, setSession] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [habits, setHabits] = useState([]);
+    const [completedToday, setCompletedToday] = useState(new Set());
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
+    const todayStr = new Date().toISOString().split("T")[0];
 
     useEffect(() => {
-        // Check initial active session
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
             setLoading(false);
         });
 
-        // Listen for auth state changes (login, logout, token refresh)
         const {
             data: { subscription },
         } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -25,35 +30,101 @@ export default function App() {
         return () => subscription.unsubscribe();
     }, []);
 
+    // Fetch habits and today's completion logs
+    const fetchHabitsData = async () => {
+        if (!session?.user?.id) return;
+
+        try {
+            // 1. Fetch all user habits
+            const { data: userHabits, error: habitError } = await supabase
+                .from("habits")
+                .select("*")
+                .order("created_at", { ascending: false });
+
+            if (habitError) throw habitError;
+
+            // 2. Fetch logs for today
+            const { data: todayLogs, error: logError } = await supabase
+                .from("habit_logs")
+                .select("habit_id")
+                .eq("completed_at", todayStr);
+
+            if (logError) throw logError;
+
+            setHabits(userHabits || []);
+            setCompletedToday(
+                new Set((todayLogs || []).map((log) => log.habit_id)),
+            );
+        } catch (error) {
+            console.error("Error fetching habits data:", error.message);
+        }
+    };
+
+    useEffect(() => {
+        if (session) {
+            fetchHabitsData();
+        }
+    }, [session]);
+
+    // Handle Toggle Check-in / Uncheck
+    const handleToggle = async (habitId, isCompleted) => {
+        const updatedCompleted = new Set(completedToday);
+
+        if (isCompleted) {
+            updatedCompleted.delete(habitId);
+            setCompletedToday(updatedCompleted);
+            await supabase
+                .from("habit_logs")
+                .delete()
+                .match({ habit_id: habitId, completed_at: todayStr });
+        } else {
+            updatedCompleted.add(habitId);
+            setCompletedToday(updatedCompleted);
+            await supabase.from("habit_logs").insert([
+                {
+                    habit_id: habitId,
+                    user_id: session.user.id,
+                    completed_at: todayStr,
+                },
+            ]);
+        }
+    };
+
+    // Handle Habit Deletion
+    const handleDeleteHabit = async (habitId) => {
+        setHabits(habits.filter((h) => h.id !== habitId));
+        await supabase.from("habits").delete().eq("id", habitId);
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
-                Loading...
+                <Loader2 className="animate-spin mr-2" size={20} /> Loading...
             </div>
         );
     }
 
-    // If not logged in, render the Auth component
     if (!session) {
         return <Auth />;
     }
 
-    // If logged in, render the Habit Tracker Dashboard
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 p-8">
+        <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12">
             <div className="max-w-xl mx-auto space-y-6">
-                {/* Header */}
                 <header className="flex items-center justify-between border-b border-slate-800 pb-4">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">
-                            Daily Habit Tracker
+                            Daily Habits
                         </h1>
                         <p className="text-xs text-slate-400">
                             {session.user.email}
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition cursor-pointer">
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition cursor-pointer"
+                        >
                             <Plus size={16} /> New Habit
                         </button>
                         <button
@@ -66,19 +137,33 @@ export default function App() {
                     </div>
                 </header>
 
-                {/* Dashboard Placeholder */}
-                <div className="flex items-center justify-between p-4 bg-slate-900 rounded-xl border border-slate-800">
-                    <div className="flex items-center gap-3">
-                        <button className="text-emerald-400 hover:text-emerald-300">
-                            <CheckCircle2 size={24} />
-                        </button>
-                        <span className="font-medium">Drink 2L Water</span>
-                    </div>
-                    <div className="flex items-center gap-1 text-amber-400 text-sm font-semibold">
-                        <Flame size={16} /> 5 Days
-                    </div>
+                {/* Habit List Display */}
+                <div className="space-y-3">
+                    {habits.length === 0 ? (
+                        <div className="text-center py-12 border border-dashed border-slate-800 rounded-xl text-slate-500 text-sm">
+                            No habits created yet. Click "New Habit" to get
+                            started!
+                        </div>
+                    ) : (
+                        habits.map((habit) => (
+                            <HabitItem
+                                key={habit.id}
+                                habit={habit}
+                                isCompleted={completedToday.has(habit.id)}
+                                onToggle={handleToggle}
+                                onDelete={handleDeleteHabit}
+                            />
+                        ))
+                    )}
                 </div>
             </div>
+
+            <HabitModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                onHabitAdded={(newHabit) => setHabits([newHabit, ...habits])}
+                userId={session.user.id}
+            />
         </div>
     );
 }
