@@ -30,20 +30,30 @@ export default function App() {
         return () => subscription.unsubscribe();
     }, []);
 
-    // Fetch habits and today's completion logs
+    // Fetch habits along with all historical logs for streak calculations
     const fetchHabitsData = async () => {
         if (!session?.user?.id) return;
 
         try {
-            // 1. Fetch all user habits
+            // 1. UPDATED QUERY: Fetch all user habits and their nested habit_logs
             const { data: userHabits, error: habitError } = await supabase
                 .from("habits")
-                .select("*")
+                .select(
+                    `
+          id,
+          title,
+          category,
+          created_at,
+          habit_logs (
+            completed_at
+          )
+        `,
+                )
                 .order("created_at", { ascending: false });
 
             if (habitError) throw habitError;
 
-            // 2. Fetch logs for today
+            // 2. Fetch today's completion logs to keep checkmark buttons accurate
             const { data: todayLogs, error: logError } = await supabase
                 .from("habit_logs")
                 .select("habit_id")
@@ -88,6 +98,9 @@ export default function App() {
                 },
             ]);
         }
+
+        // Refresh habit data to recompute streaks dynamically
+        fetchHabitsData();
     };
 
     // Handle Habit Deletion
@@ -161,7 +174,7 @@ export default function App() {
             <HabitModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                onHabitAdded={(newHabit) => setHabits([newHabit, ...habits])}
+                onHabitAdded={() => fetchHabitsData()}
                 userId={session.user.id}
             />
         </div>
