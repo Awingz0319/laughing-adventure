@@ -4,6 +4,8 @@ import Auth from "./components/Auth";
 import HabitModal from "./components/HabitModal";
 import HabitItem from "./components/HabitItem";
 import { LogOut, Plus, Loader2 } from "lucide-react";
+import WeeklyChart from "./components/WeeklyChart";
+import { generateWeeklyData } from "./lib/analyticsHelper";
 
 export default function App() {
     const [session, setSession] = useState(null);
@@ -121,6 +123,8 @@ export default function App() {
         return <Auth />;
     }
 
+    const weeklyData = generateWeeklyData(habits);
+
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12">
             <div className="max-w-xl mx-auto space-y-6">
@@ -149,6 +153,8 @@ export default function App() {
                         </button>
                     </div>
                 </header>
+
+                <WeeklyChart data={weeklyData} />
 
                 {/* Habit List Display */}
                 <div className="space-y-3">
