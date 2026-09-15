@@ -5,7 +5,11 @@ import HabitModal from "./components/HabitModal";
 import HabitItem from "./components/HabitItem";
 import { LogOut, Plus, Loader2 } from "lucide-react";
 import WeeklyChart from "./components/WeeklyChart";
-import { generateWeeklyData } from "./lib/analyticsHelper";
+import ActivityHeatmap from "./components/ActivityHeatmap";
+import {
+    generateWeeklyData,
+    generateMonthlyHeatmap,
+} from "./lib/analyticsHelper";
 
 export default function App() {
     const [session, setSession] = useState(null);
@@ -13,6 +17,7 @@ export default function App() {
     const [habits, setHabits] = useState([]);
     const [completedToday, setCompletedToday] = useState(new Set());
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedDay, setSelectedDay] = useState(null);
 
     const todayStr = new Date().toISOString().split("T")[0];
 
@@ -124,6 +129,7 @@ export default function App() {
     }
 
     const weeklyData = generateWeeklyData(habits);
+    const heatmapData = generateMonthlyHeatmap(habits);
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12">
@@ -154,7 +160,52 @@ export default function App() {
                     </div>
                 </header>
 
-                <WeeklyChart data={weeklyData} />
+                {/* Activity Overview: Heatmap + Weekly Chart */}
+                <div className="space-y-4">
+                    <ActivityHeatmap data={heatmapData} />
+
+                    <WeeklyChart
+                        data={weeklyData}
+                        selectedDay={selectedDay}
+                        onSelectDay={(entry) => setSelectedDay(entry)}
+                    />
+
+                    {/* Day Drilldown Panel */}
+                    {selectedDay && (
+                        <div className="p-4 bg-slate-900 border border-indigo-500/30 rounded-xl space-y-2">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-xs font-semibold uppercase tracking-wider text-indigo-400">
+                                    Completed on{" "}
+                                    {selectedDay.fullDate || selectedDay.day}
+                                </h3>
+                                <button
+                                    onClick={() => setSelectedDay(null)}
+                                    className="text-xs text-slate-500 hover:text-slate-300 cursor-pointer"
+                                >
+                                    Close
+                                </button>
+                            </div>
+
+                            {selectedDay.tasks?.length > 0 ? (
+                                <ul className="space-y-1">
+                                    {selectedDay.tasks.map((title, i) => (
+                                        <li
+                                            key={i}
+                                            className="text-sm text-slate-200 flex items-center gap-2"
+                                        >
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                            {title}
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="text-xs text-slate-500">
+                                    No habits were logged for this day.
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
 
                 {/* Habit List Display */}
                 <div className="space-y-3">
